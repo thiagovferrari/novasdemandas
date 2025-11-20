@@ -64,12 +64,3 @@ export interface AIAnalysisResult {
   criticalAlerts: string[];
   topPriorityId?: string;
 }
-
-// Novos tipos para o Assistente de Chat
-export type AIActionType = 'CREATE_DEMAND' | 'CREATE_EVENT' | 'UNKNOWN';
-
-export interface AIActionResponse {
-  type: AIActionType;
-  data: any; // Pode ser uma lista de demandas ou um evento
-  message: string; // Resposta da IA para o usuário
-}
