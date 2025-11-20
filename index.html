@@ -8,6 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script>
       tailwind.config = {
+        darkMode: 'class',
         theme: {
           extend: {
             fontFamily: {
@@ -52,25 +53,41 @@
       }
     </script>
     <style>
-      body {
-        background-color: #f8fafc;
-        /* Lighter, more ethereal Mesh Gradient */
-        background-image: 
+      :root {
+        --bg-gradient-light: 
           radial-gradient(at 0% 0%, hsla(253,16%,7%,0) 0, hsla(253,16%,7%,0) 50%), 
           radial-gradient(at 0% 0%, hsla(210, 100%, 90%, 0.3) 0, hsla(210, 100%, 90%, 0) 50%), 
           radial-gradient(at 100% 0%, hsla(280, 100%, 90%, 0.3) 0, hsla(280, 100%, 90%, 0) 50%), 
           radial-gradient(at 100% 100%, hsla(280, 100%, 90%, 0) 0, hsla(280, 100%, 90%, 0) 50%), 
           radial-gradient(at 0% 100%, hsla(210, 100%, 90%, 0) 0, hsla(210, 100%, 90%, 0) 50%), 
           linear-gradient(120deg, #f0f4ff 0%, #fdf4ff 100%);
+
+        --bg-gradient-dark:
+          radial-gradient(at 0% 0%, rgba(79, 70, 229, 0.15) 0, transparent 50%), 
+          radial-gradient(at 100% 0%, rgba(124, 58, 237, 0.15) 0, transparent 50%), 
+          radial-gradient(at 50% 50%, rgba(15, 23, 42, 1) 0%, transparent 100%),
+          linear-gradient(180deg, #0f172a 0%, #020617 100%);
+      }
+
+      body {
+        background-color: #f8fafc;
+        background-image: var(--bg-gradient-light);
         background-attachment: fixed;
         color: #334155;
         -webkit-font-smoothing: antialiased;
-        overflow-x: hidden; /* Prevent horizontal scroll on mobile */
+        overflow-x: hidden;
+        transition: background-image 0.5s ease, background-color 0.5s ease, color 0.5s ease;
+      }
+
+      html.dark body {
+        background-color: #0f172a;
+        background-image: var(--bg-gradient-dark);
+        color: #e2e8f0;
       }
       
       /* MODERN ULTRA-LIGHT GLASS */
       .glass-panel {
-        background: rgba(255, 255, 255, 0.4); /* More transparent */
+        background: rgba(255, 255, 255, 0.4);
         backdrop-filter: blur(24px) saturate(160%);
         -webkit-backdrop-filter: blur(24px) saturate(160%);
         border: 1px solid rgba(255, 255, 255, 0.6);
@@ -78,6 +95,12 @@
           0 8px 32px -8px rgba(31, 38, 135, 0.05),
           0 0 0 1px rgba(255,255,255,0.3) inset;
         transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+      }
+
+      html.dark .glass-panel {
+        background: rgba(30, 41, 59, 0.4);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.3);
       }
       
       .glass-panel:hover {
@@ -88,12 +111,22 @@
         transform: translateY(-2px);
       }
 
-      /* Sidebar Glass - Mobile & Desktop */
+      html.dark .glass-panel:hover {
+        background: rgba(30, 41, 59, 0.6);
+        border-color: rgba(255, 255, 255, 0.1);
+      }
+
+      /* Sidebar Glass */
       .glass-sidebar {
         background: rgba(255, 255, 255, 0.65);
         backdrop-filter: blur(30px) saturate(180%);
         -webkit-backdrop-filter: blur(30px) saturate(180%);
         border-right: 1px solid rgba(255, 255, 255, 0.5);
+      }
+
+      html.dark .glass-sidebar {
+        background: rgba(15, 23, 42, 0.7);
+        border-right: 1px solid rgba(255, 255, 255, 0.05);
       }
 
       /* Sculpted Inputs */
@@ -104,19 +137,32 @@
         transition: all 0.3s ease;
         box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.01);
       }
+      
+      html.dark .glass-input {
+        background: rgba(30, 41, 59, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #f8fafc;
+      }
+
       .glass-input:focus {
         background: #ffffff;
-        border-color: #818cf8; /* Indigo 400 */
+        border-color: #818cf8;
         outline: none;
         box-shadow: 
           0 0 0 4px rgba(129, 140, 248, 0.1),
           inset 0 1px 2px rgba(0, 0, 0, 0.01);
       }
-      .glass-input::placeholder {
-        color: #94a3b8;
+
+      html.dark .glass-input:focus {
+        background: rgba(30, 41, 59, 0.8);
+        border-color: #6366f1;
+        box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
       }
 
-      /* Modern Buttons - Mobile Friendly */
+      .glass-input::placeholder { color: #94a3b8; }
+      html.dark .glass-input::placeholder { color: #64748b; }
+
+      /* Modern Buttons */
       .btn-primary {
         background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
         color: white;
@@ -124,9 +170,7 @@
         box-shadow: 0 4px 15px -3px rgba(79, 70, 229, 0.3);
         transition: all 0.2s active;
       }
-      .btn-primary:active {
-        transform: scale(0.98);
-      }
+      .btn-primary:active { transform: scale(0.98); }
       .btn-primary:hover {
         box-shadow: 0 8px 20px -3px rgba(79, 70, 229, 0.4);
         filter: brightness(1.05);
@@ -138,6 +182,13 @@
         color: #475569;
         backdrop-filter: blur(10px);
       }
+
+      html.dark .btn-glass {
+        background: rgba(30, 41, 59, 0.5);
+        border-color: rgba(255, 255, 255, 0.1);
+        color: #cbd5e1;
+      }
+
       .btn-glass:active {
         background: rgba(255, 255, 255, 0.8);
         transform: scale(0.98);
@@ -147,63 +198,31 @@
         color: #4338ca;
       }
 
-      /* Date Inputs */
-      input[type="date"] {
-        color-scheme: light;
+      html.dark .btn-glass:hover {
+        background: rgba(51, 65, 85, 0.6);
+        color: #a5b4fc;
       }
+
+      /* Date Inputs */
+      input[type="date"] { color-scheme: light; }
+      html.dark input[type="date"] { color-scheme: dark; }
 
       /* Scrollbar */
-      .custom-scrollbar::-webkit-scrollbar {
-        width: 4px;
-        height: 4px;
-      }
-      .custom-scrollbar::-webkit-scrollbar-track {
-        background: transparent;
-      }
-      .custom-scrollbar::-webkit-scrollbar-thumb {
-        background: rgba(148, 163, 184, 0.3);
-        border-radius: 100vh;
-      }
+      .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+      .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+      .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 100vh; }
+      html.dark .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); }
 
       /* Utils */
-      .hover-trigger .hover-target {
-        opacity: 0;
-        transform: translateX(-5px);
-        transition: all 0.3s ease;
-      }
-      
-      /* Mobile: Always show actions, no hover effect needed */
-      @media (hover: none) {
-        .hover-trigger .hover-target {
-          opacity: 1;
-          transform: none;
-        }
-      }
-
-      @media (hover: hover) {
-        .hover-trigger:hover .hover-target {
-          opacity: 1;
-          transform: translateX(0);
-        }
-      }
+      .hover-trigger .hover-target { opacity: 0; transform: translateX(-5px); transition: all 0.3s ease; }
+      @media (hover: none) { .hover-trigger .hover-target { opacity: 1; transform: none; } }
+      @media (hover: hover) { .hover-trigger:hover .hover-target { opacity: 1; transform: translateX(0); } }
       
       .toast-container {
-        position: fixed;
-        top: 20px; /* Mobile friendly top positioning */
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 9999;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        pointer-events: none;
-        width: 90%;
-        max-width: 400px;
+        position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999;
+        display: flex; flex-direction: column; gap: 10px; pointer-events: none; width: 90%; max-width: 400px;
       }
-      .toast {
-        pointer-events: auto;
-        width: 100%;
-      }
+      .toast { pointer-events: auto; width: 100%; }
     </style>
   <script type="importmap">
 {
@@ -213,9 +232,9 @@
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
     "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
+    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.84.0",
     "vite": "https://aistudiocdn.com/vite@^7.2.4",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
-    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.84.0"
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1"
   }
 }
 </script>
