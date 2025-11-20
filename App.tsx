@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Plus, Calendar as CalendarIcon, MapPin, Trash2, CheckCircle2, Circle, 
@@ -10,6 +11,7 @@ import { GlassCard } from './components/GlassCard';
 import { Modal } from './components/Modal';
 import { Event, Demand, Priority, Status, EventStatus, Client, Note, AIAnalysisResult } from './types';
 import { generateDemandsForEvent, analyzeProjectRisks } from './services/geminiService';
+import { supabase } from './services/supabaseClient';
 
 // --- UTILS ---
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -42,7 +44,7 @@ const isOverdue = (dateStr?: string) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const cleanDateStr = dateStr.split('T')[0];
-  const [year, month, day] = cleanDateStr.split('-').map(Number);
+  const [year, month, day] = cleanDateStr.split('-');
   const due = new Date(year, month - 1, day);
   return due < today;
 };
@@ -134,7 +136,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ isOpen, title, message, o
   );
 };
 
-// --- SUB-COMPONENTS ---
+// --- VIEWS ---
 
 const DashboardView: React.FC<{ 
   events: Event[], 
@@ -903,37 +905,58 @@ const App: React.FC = () => {
   };
 
   // --- INIT & SYNC ---
-  useEffect(() => {
-    const loadData = () => {
-      try {
-        const e = localStorage.getItem('events');
-        const d = localStorage.getItem('demands');
-        const c = localStorage.getItem('clients');
-        const n = localStorage.getItem('notes');
-        const a = localStorage.getItem('aiAnalysis');
-        
-        if (e) setEvents(JSON.parse(e));
-        if (d) setDemands(JSON.parse(d));
-        if (c) setClients(JSON.parse(c));
-        if (n) setNotes(JSON.parse(n));
-        if (a) setAiAnalysis(JSON.parse(a));
-      } catch(err) {
-        console.error("Failed to load data", err);
-        showToast("Erro ao carregar dados locais", 'error');
+  const fetchData = useCallback(async () => {
+    if (!supabase) return;
+
+    try {
+      // Events
+      const { data: eventsData } = await supabase.from('events').select('*');
+      if (eventsData) {
+        setEvents(eventsData.map(e => ({
+          id: e.id, title: e.title, date: e.date, location: e.location, 
+          description: e.description, status: e.status, imageUrl: e.image_url, websiteUrl: e.website_url
+        })));
       }
-    };
 
-    loadData();
-    window.addEventListener('storage', loadData);
-    return () => window.removeEventListener('storage', loadData);
-  }, [showToast]);
+      // Demands
+      const { data: demandsData } = await supabase.from('demands').select('*');
+      if (demandsData) {
+        setDemands(demandsData.map(d => ({
+          id: d.id, eventId: d.event_id, title: d.title, description: d.description,
+          priority: d.priority, status: d.status, dueDate: d.due_date
+        })));
+      }
 
-  const persist = (key: string, data: any) => localStorage.setItem(key, JSON.stringify(data));
-  useEffect(() => persist('events', events), [events]);
-  useEffect(() => persist('demands', demands), [demands]);
-  useEffect(() => persist('clients', clients), [clients]);
-  useEffect(() => persist('notes', notes), [notes]);
-  useEffect(() => persist('aiAnalysis', aiAnalysis), [aiAnalysis]);
+      // Clients
+      const { data: clientsData } = await supabase.from('clients').select('*');
+      if (clientsData) setClients(clientsData);
+
+      // Notes
+      const { data: notesData } = await supabase.from('notes').select('*');
+      if (notesData) {
+          setNotes(notesData.map(n => ({
+              id: n.id, content: n.content, dueDate: n.due_date, color: n.color, createdAt: n.created_at
+          })));
+      }
+    } catch(err) {
+      console.error("Fetch error:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+
+    if (!supabase) return;
+
+    const subscription = supabase
+      .channel('public:all')
+      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+        fetchData(); 
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(subscription); };
+  }, [fetchData]);
 
   // --- LOGIC HANDLERS ---
   
@@ -949,53 +972,48 @@ const App: React.FC = () => {
     setAiAnalysis(null);
   };
 
-  const handleSaveEvent = (e?: React.FormEvent) => {
+  const handleSaveEvent = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
     if (!eventForm.title || !eventForm.date) {
       showToast("Por favor, preencha o título e a data do evento.", 'error');
       return;
     }
+    if (!supabase) return showToast("Erro de conexão com o banco.", 'error');
 
     const formattedUrl = formatUrl(eventForm.websiteUrl || '');
+    const payload = {
+      title: eventForm.title, date: eventForm.date, location: eventForm.location,
+      description: eventForm.description, status: eventForm.status || 'ACTIVE',
+      image_url: eventForm.imageUrl, website_url: formattedUrl
+    };
 
     if (eventForm.id) {
-      setEvents(prev => prev.map(e => e.id === eventForm.id ? { ...e, ...eventForm, websiteUrl: formattedUrl } as Event : e));
+      await supabase.from('events').update(payload).eq('id', eventForm.id);
       showToast("Evento atualizado!", 'success');
     } else {
-      const newEvent: Event = {
-        id: generateId(),
-        title: eventForm.title,
-        date: eventForm.date,
-        location: eventForm.location || '',
-        description: eventForm.description || '',
-        status: eventForm.status || 'ACTIVE', 
-        imageUrl: eventForm.imageUrl,
-        websiteUrl: formattedUrl 
-      };
-      setEvents(prev => [...prev, newEvent]);
+      await supabase.from('events').insert([payload]);
       showToast("Novo evento criado!", 'success');
     }
     setIsEventModalOpen(false);
     setEventForm({});
   };
 
-  const handleCompleteEvent = (id: string) => {
-    confirmAction("Finalizar Evento", "Deseja finalizar este evento? Ele será movido para os Arquivados.", () => {
-        setEvents(prev => prev.map(e => e.id === id ? { ...e, status: 'COMPLETED' } : e));
+  const handleCompleteEvent = async (id: string) => {
+    confirmAction("Finalizar Evento", "Deseja finalizar este evento? Ele será movido para os Arquivados.", async () => {
+        if(supabase) await supabase.from('events').update({ status: 'COMPLETED' }).eq('id', id);
         showToast("Evento finalizado e arquivado.", 'success');
     });
   };
 
-  const handleRestoreEvent = (id: string) => {
-    setEvents(prev => prev.map(e => e.id === id ? { ...e, status: 'ACTIVE' } : e));
+  const handleRestoreEvent = async (id: string) => {
+    if(supabase) await supabase.from('events').update({ status: 'ACTIVE' }).eq('id', id);
     showToast("Evento reaberto.", 'success');
   };
 
-  const handleDeleteEvent = (id: string) => {
-    confirmAction("Excluir Evento", "Tem certeza que deseja excluir este evento permanentemente? Todas as demandas associadas também serão excluídas.", () => {
-        setEvents(prev => prev.filter(e => e.id !== id));
-        setDemands(prev => prev.filter(d => d.eventId !== id));
+  const handleDeleteEvent = async (id: string) => {
+    confirmAction("Excluir Evento", "Tem certeza que deseja excluir este evento permanentemente? Todas as demandas associadas também serão excluídas.", async () => {
+        if(supabase) await supabase.from('events').delete().eq('id', id);
         showToast("Evento excluído.", 'success');
     });
   };
@@ -1017,7 +1035,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSaveDemand = () => {
+  const handleSaveDemand = async () => {
     let targetEventId = demandForm.eventId;
     if (!targetEventId) {
       if (events.length > 0) {
@@ -1032,97 +1050,97 @@ const App: React.FC = () => {
         return;
       }
     }
+    if (!supabase) return;
+
+    const payload = {
+      event_id: targetEventId, title: demandForm.title, description: demandForm.description,
+      priority: demandForm.priority || 'Média', status: demandForm.status || 'Pendente',
+      due_date: demandForm.dueDate
+    };
 
     if (demandForm.id) {
-      setDemands(prev => prev.map(d => d.id === demandForm.id ? { ...d, ...demandForm, eventId: targetEventId! } as Demand : d));
+      await supabase.from('demands').update(payload).eq('id', demandForm.id);
       showToast("Demanda atualizada!", 'success');
     } else {
-      const newDemand: Demand = {
-        id: generateId(),
-        eventId: targetEventId!,
-        title: demandForm.title!,
-        description: demandForm.description || '',
-        priority: demandForm.priority || Priority.MEDIUM,
-        status: demandForm.status || Status.PENDING,
-        dueDate: demandForm.dueDate
-      };
-      setDemands(prev => [...prev, newDemand]);
+      await supabase.from('demands').insert([payload]);
       showToast("Demanda criada!", 'success');
     }
     setIsDemandModalOpen(false);
     setDemandForm({ priority: Priority.MEDIUM, status: Status.PENDING });
   };
 
-  const handleDeleteDemand = (id: string) => {
-    confirmAction("Excluir Demanda", "Deseja excluir esta demanda permanentemente?", () => {
-        setDemands(prev => prev.filter(d => d.id !== id));
+  const handleDeleteDemand = async (id: string) => {
+    confirmAction("Excluir Demanda", "Deseja excluir esta demanda permanentemente?", async () => {
+        if(supabase) await supabase.from('demands').delete().eq('id', id);
         showToast("Demanda excluída.", 'success');
     });
   }
 
-  const handleCompleteDemand = (id: string) => {
-    setDemands(p => p.map(d => d.id === id ? { ...d, status: Status.DONE } : d));
+  const handleCompleteDemand = async (id: string) => {
+    if(supabase) await supabase.from('demands').update({ status: 'Concluído' }).eq('id', id);
     showToast("Demanda concluída e arquivada!", 'success');
   };
 
-  const handleSaveClient = () => {
+  const handleRestoreDemand = async (id: string) => {
+     if(supabase) await supabase.from('demands').update({ status: 'Pendente' }).eq('id', id);
+     showToast("Demanda restaurada.", 'success');
+  };
+
+  const handleSaveClient = async () => {
     if(!clientForm.name) {
       showToast("Nome do contato é obrigatório.", 'error');
       return;
     }
+    if(!supabase) return;
+
+    const payload = {
+        name: clientForm.name, company: clientForm.company, role: clientForm.role,
+        email: clientForm.email, phone: clientForm.phone, status: clientForm.status || 'Potential',
+        notes: clientForm.notes
+    };
+
     if (clientForm.id) {
-      setClients(prev => prev.map(c => c.id === clientForm.id ? { ...c, ...clientForm } as Client : c));
-      showToast("Contato atualizado.", 'success');
+        await supabase.from('clients').update(payload).eq('id', clientForm.id);
+        showToast("Contato atualizado.", 'success');
     } else {
-      const newClient: Client = {
-        id: generateId(),
-        name: clientForm.name,
-        company: clientForm.company || '',
-        role: clientForm.role || '',
-        email: clientForm.email || '',
-        phone: clientForm.phone || '',
-        status: clientForm.status as any || 'Potential',
-        notes: clientForm.notes || ''
-      };
-      setClients(prev => [...prev, newClient]);
-      showToast("Novo contato adicionado!", 'success');
+        await supabase.from('clients').insert([payload]);
+        showToast("Novo contato adicionado!", 'success');
     }
     setIsClientModalOpen(false);
     setClientForm({ status: 'Potential' });
   };
 
-  const handleDeleteClient = (id: string) => {
-      confirmAction("Excluir Contato", "Deseja remover este contato do CRM?", () => {
-        setClients(prev => prev.filter(c => c.id !== id));
+  const handleDeleteClient = async (id: string) => {
+      confirmAction("Excluir Contato", "Deseja remover este contato do CRM?", async () => {
+        if(supabase) await supabase.from('clients').delete().eq('id', id);
         showToast("Contato removido.", 'success');
       });
   }
 
-  const handleSaveNote = () => {
+  const handleSaveNote = async () => {
     if(!noteForm.trim()) return;
+    if(!supabase) return;
+    
+    const colors = ['bg-yellow-50', 'bg-blue-50', 'bg-emerald-50', 'bg-rose-50', 'bg-purple-50']; 
+    
     if (editingNoteId) {
-      setNotes(prev => prev.map(n => n.id === editingNoteId ? { ...n, content: noteForm, dueDate: noteDueDate } : n));
-      showToast("Nota salva.", 'success');
+      await supabase.from('notes').update({ content: noteForm, due_date: noteDueDate }).eq('id', editingNoteId);
     } else {
-      const colors = ['bg-yellow-50', 'bg-blue-50', 'bg-emerald-50', 'bg-rose-50', 'bg-purple-50']; 
-      const newNote: Note = {
-        id: generateId(),
-        content: noteForm,
-        createdAt: new Date().toISOString(),
-        dueDate: noteDueDate,
-        color: colors[Math.floor(Math.random() * colors.length)]
-      };
-      setNotes(prev => [newNote, ...prev]);
-      showToast("Nota criada!", 'success');
+      await supabase.from('notes').insert([{ 
+          content: noteForm, 
+          due_date: noteDueDate,
+          color: colors[Math.floor(Math.random() * colors.length)]
+      }]);
     }
+    showToast("Nota salva.", 'success');
     setIsNoteModalOpen(false);
     setNoteForm('');
     setNoteDueDate('');
     setEditingNoteId(null);
   };
 
-  const handleDeleteNote = (id: string) => {
-      setNotes(prev => prev.filter(n => n.id !== id));
+  const handleDeleteNote = async (id: string) => {
+      if(supabase) await supabase.from('notes').delete().eq('id', id);
       showToast("Nota excluída.", 'info');
   }
 
@@ -1183,7 +1201,7 @@ const App: React.FC = () => {
               </h1>
               <div className="flex items-center gap-1.5">
                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-sm"></span>
-                 <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Pro v5.0</p>
+                 <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Pro v5.1 Online</p>
               </div>
             </div>
             {/* Close button for mobile */}
@@ -1221,7 +1239,7 @@ const App: React.FC = () => {
                </div>
                <div>
                  <p className="text-xs font-bold text-slate-700">Status Online</p>
-                 <p className="text-[10px] text-slate-400 font-medium">Dados Sincronizados</p>
+                 <p className="text-[10px] text-slate-400 font-medium">Sincronizado</p>
                </div>
              </div>
           </div>
@@ -1274,7 +1292,7 @@ const App: React.FC = () => {
               isAnalyzing={isAnalyzing}
               onOpenDemandModal={() => { setDemandForm({ priority: Priority.MEDIUM, status: Status.PENDING }); setIsDemandModalOpen(true); }}
               onManageDemand={(d) => { setDemandForm(d); setIsDemandModalOpen(true); }}
-              onCompleteDemand={(id) => setDemands(p => p.map(d => d.id === id ? { ...d, status: Status.DONE } : d))}
+              onCompleteDemand={handleCompleteDemand}
               onDeleteDemand={handleDeleteDemand}
             />
           )}
@@ -1294,7 +1312,7 @@ const App: React.FC = () => {
               events={events} 
               demands={demands} 
               onRestoreEvent={handleRestoreEvent}
-              onRestoreDemand={(id) => setDemands(p => p.map(d => d.id === id ? { ...d, status: Status.PENDING } : d))}
+              onRestoreDemand={handleRestoreDemand}
               onDeleteEvent={handleDeleteEvent}
             />
           )}

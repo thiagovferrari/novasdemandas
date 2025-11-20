@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 
 // Estes valores virão das variáveis de ambiente da Vercel (.env)
